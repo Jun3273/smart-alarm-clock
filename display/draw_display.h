@@ -4,6 +4,10 @@
 #include <TFT_eSPI.h>
 #include <SPI.h>
 
-void setup_display(TFT_eSPI &tft);
+extern TFT_eSPI tft;
+
+void setup_display();
+void draw_time(int hr, int mn, int sc);
+void draw_data(int temp, int hum, int co, int co2, int light);
 
 #endif
