@@ -9,28 +9,10 @@ BLECharacteristic *pCharacteristic;
 bool deviceConnected = false;
 float txValue = 0;
 const int readPin = 14;
-const int speaker = 21;
-int frequency = 50000;
 bool state = false;
 ESP32Time tim;
 
 //std::string rxValue; // Could also make this a global var to access it in loop()
-
-hw_timer_t * timer = NULL;
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
- 
-void IRAM_ATTR onTimer() {
-  portENTER_CRITICAL_ISR(&timerMux);
-  if(state == true) {
-    digitalWrite(21, HIGH);
-  }
-  else {
-    digitalWrite(21, LOW);
-  }
-  state = !state;
-  portEXIT_CRITICAL_ISR(&timerMux);
- 
-}
 
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -157,38 +139,21 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 };
 BLEServer *pServer;
 void setup() {
-  pinMode(21, OUTPUT);
   for( int i = 0; i < 10; i ++) {
     alarms[i].hour = -1;
     alarms[i].minute = -1;
   }
-  timer = timerBegin(0, 80, true);
-  timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, frequency, true);
   
   Serial.begin(115200);
-  
-  // Create the BLE Device
   BLEDevice::init("Smart Clock"); // Give it a name
-  // Create the BLE Server
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
-  // Create the BLE Service
   BLEService *pService = pServer->createService(SERVICE_UUID);
-  // Create a BLE Characteristic
-  pCharacteristic = pService->createCharacteristic(
-                      CHARACTERISTIC_UUID_TX,
-                      BLECharacteristic::PROPERTY_NOTIFY
-                    );             
+  pCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_NOTIFY);             
   pCharacteristic->addDescriptor(new BLE2902());
-  BLECharacteristic *pCharacteristic = pService->createCharacteristic(
-                                         CHARACTERISTIC_UUID_RX,
-                                         BLECharacteristic::PROPERTY_WRITE
-                                       );
+  BLECharacteristic *pCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
   pCharacteristic->setCallbacks(new MyCallbacks());
-  // Start the service
   pService->start();
-  // Start advertising
   pServer->getAdvertising()->start();
   Serial.println("Waiting a client connection to notify...");
 }
