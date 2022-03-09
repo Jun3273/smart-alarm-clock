@@ -1,0 +1,234 @@
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+#include <ESP32Time.h>
+#include <Arduino.h>
+
+BLECharacteristic *pCharacteristic;
+bool deviceConnected = false;
+float txValue = 0;
+const int readPin = 14;
+const int speaker = 21;
+int frequency = 50000;
+bool state = false;
+ESP32Time tim;
+
+//std::string rxValue; // Could also make this a global var to access it in loop()
+
+hw_timer_t * timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+ 
+void IRAM_ATTR onTimer() {
+  portENTER_CRITICAL_ISR(&timerMux);
+  if(state == true) {
+    digitalWrite(21, HIGH);
+  }
+  else {
+    digitalWrite(21, LOW);
+  }
+  state = !state;
+  portEXIT_CRITICAL_ISR(&timerMux);
+ 
+}
+
+#define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
+#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+    }
+};
+
+typedef struct Alarm {
+  int hour;
+  int minute;
+} Alarm;
+
+Alarm alarms[10];
+
+void addAlarm(int h, int m) {
+  for(int i = 0; i < 10; i++) {
+    if(alarms[i].hour == -1 && alarms[i].minute == -1) {
+      alarms[i].hour = h;
+      alarms[i].minute = m;
+      break;
+    }
+  }
+}
+
+bool checkAlarms() {
+  int cur_h = tim.getHour(true);
+  int cur_m = tim.getMinute();
+  for(int i = 0; i < 10; i++) {
+    if(alarms[i].hour == cur_h && alarms[i].minute == cur_m) {
+      return(true);
+    }
+  }
+  return(false);
+}
+
+class MyCallbacks: public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pCharacteristic) {
+    std::string rxValue = pCharacteristic->getValue();
+    
+    if (rxValue.length() > 0) {
+      Serial.print("\n");
+      String currentTime;
+      String hour;
+      String minute;
+      String second;
+      for (int i = 0; i < rxValue.length(); i++) {
+        switch(rxValue[i]) {
+          case 'H' :
+            if(rxValue[i + 1] >= 0x30 && rxValue[i + 1] <= 0x39) {
+              hour = rxValue[i + 1];
+              if(rxValue[i + 2] >= 0x30 && rxValue[i + 2] <= 0x39) {
+                hour = hour + rxValue[i + 2];
+              }
+            }
+            break;
+          case 'M' :
+            if(rxValue[i + 1] >= 0x30 && rxValue[i + 1] <= 0x39) {
+              minute = rxValue[i + 1];
+              if(rxValue[i + 2] >= 0x30 && rxValue[i + 2] <= 0x39) {
+                minute = minute + rxValue[i + 2];
+              }
+            }
+            break;
+          case 'S' :
+            if(rxValue[i + 1] >= 0x30 && rxValue[i + 1] <= 0x39) {
+              second = rxValue[i + 1];
+              if(rxValue[i + 2] >= 0x30 && rxValue[i + 2] <= 0x39) {
+                second = second + rxValue[i + 2];
+              }
+            }
+            break;
+          case 'O' :
+              if(rxValue[i + 1] >= 0x30 && rxValue[i + 1] <= 0x39) {
+                hour = rxValue[i + 1];
+                if(rxValue[i + 2] >= 0x30 && rxValue[i + 2] <= 0x39) { // rxValue[2] char is not a colon
+                  hour = hour + rxValue[i + 2];
+                  minute = rxValue[i + 4];
+                  if(rxValue[i + 5] != 'A' || rxValue[i + 5] != 'P')
+                    minute = minute + rxValue[i + 5];
+                }
+                else {                                                 // rxValue[2] char is a colon
+                  minute = rxValue[3];
+                  if(rxValue[i + 4] != 'A' || rxValue[i + 4] != 'P')
+                    minute = minute + rxValue[i + 4];
+                }
+              }
+            if(rxValue[3] == 'P' || rxValue[4] == 'P' || rxValue[5] == 'P' || rxValue[6] == 'P' || rxValue[7] == 'P') {
+              hour = String(hour.toInt() + 12);
+            }
+            addAlarm(hour.toInt(),minute.toInt());
+            break;
+          case '1':
+              frequency = 10000;
+              timerAlarmWrite(timer, frequency, true);
+            break;
+          case '2':
+              frequency = 9000;
+              timerAlarmWrite(timer, frequency, true);
+            break;
+          case '3':
+              frequency = 8000;
+              timerAlarmWrite(timer, frequency, true);
+            break;
+        }
+    }
+    if(rxValue[0] == 'H') {
+      tim.setTime(second.toInt(), minute.toInt(), hour.toInt(), 1,1,2022); // second minute hour day month year
+      currentTime = hour + minute + second;
+      Serial.print("time: ");
+      Serial.print(tim.getTime());
+      Serial.print("\n");
+    }
+    }
+  }
+
+};
+BLEServer *pServer;
+void setup() {
+  pinMode(21, OUTPUT);
+  for( int i = 0; i < 10; i ++) {
+    alarms[i].hour = -1;
+    alarms[i].minute = -1;
+  }
+  timer = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer, &onTimer, true);
+  timerAlarmWrite(timer, frequency, true);
+  
+  Serial.begin(115200);
+  
+  // Create the BLE Device
+  BLEDevice::init("Smart Clock"); // Give it a name
+  // Create the BLE Server
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+  // Create the BLE Service
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  // Create a BLE Characteristic
+  pCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID_TX,
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );             
+  pCharacteristic->addDescriptor(new BLE2902());
+  BLECharacteristic *pCharacteristic = pService->createCharacteristic(
+                                         CHARACTERISTIC_UUID_RX,
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+  pCharacteristic->setCallbacks(new MyCallbacks());
+  // Start the service
+  pService->start();
+  // Start advertising
+  pServer->getAdvertising()->start();
+  Serial.println("Waiting a client connection to notify...");
+}
+
+void loop() {
+  if (deviceConnected) {
+    txValue = analogRead(readPin);
+    char txString[8];
+    dtostrf(txValue, 1, 2, txString);
+    Serial.println(txValue);
+//    pCharacteristic->setValue(&txValue, 1); // To send the integer value
+//    pCharacteristic->setValue("Hello!"); // Sending a test message
+    pCharacteristic->setValue(txString);
+    pCharacteristic->notify(); // Send the value to the app!
+    //Serial.print("* Sent Value: ");
+    //Serial.println(txString);
+    //Serial.println(" *");
+    Serial.print("time: ");
+    Serial.print(tim.getTime());
+    Serial.print("\nSet Alarms:\n");
+    for(int i = 0; i < 10; i++) {
+        if(alarms[i].hour != -1) {
+        Serial.print(alarms[i].hour);
+        Serial.print(" ");
+        Serial.print(alarms[i].minute);
+        Serial.print("\n");
+      }
+    }
+  }
+  else {
+    Serial.println("Client disconnected, waiting a client connection to notify...");
+    pServer->getAdvertising()->start();
+    //while(!deviceConnected);
+  }
+  if(checkAlarms()) {
+    timerAlarmEnable(timer);
+    Serial.println("its time");
+  }
+  else {
+    timerAlarmDisable(timer);
+  }
+  delay(1000);
+}
