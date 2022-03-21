@@ -141,6 +141,14 @@ void draw_snooze(bool is_snooze, int hr, int mn) {
   if (is_snooze) {
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
     tft.drawString("Snoozed", xpos, ypos, font);
+    mn += 9;
+    if (mn >= 60) {
+      hr++;
+      mn -= 60;
+      if (hr >= 24) {
+        hr -= 24;
+      }
+    }
     draw_alarm(true, hr, mn + 9);
   } else {
     tft.drawString("            ", xpos, ypos, font);    
