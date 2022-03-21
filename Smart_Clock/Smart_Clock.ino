@@ -4,6 +4,24 @@
 #include <BLE2902.h>
 #include <ESP32Time.h>
 #include <Arduino.h>
+#include "draw_display.h"
+#include "setup_time.h"
+
+/*
+Need to insert a few variables and functions into the setup for display
+VAR:
+  TFT_eSPI tft = TFT_eSPI();
+  hw_timer_t* timer = NULL;
+  ESP32Time rtc;
+FUNC:
+  setup_display();
+  setup_cur_time(TEST_SEC, TEST_MIN, TEST_HR);
+  setup_time_timer(timer);
+  draw_data(TEST_TEMP, TEST_HUMIDITY, TEST_CO, TEST_CO2, TEST_LIGHT);
+  // These two depending on whether the alarm is set, unset, disabled, or snoozed
+  draw_alarm(true, TEST_ALARM_HR, TEST_ALARM_MIN);
+  draw_snooze(true, TEST_ALARM_HR, TEST_ALARM_MIN);
+*/
 
 BLECharacteristic *pCharacteristic;
 bool deviceConnected = false;

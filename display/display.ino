@@ -27,7 +27,6 @@ void setup() {
   draw_data(TEST_TEMP, TEST_HUMIDITY, TEST_CO, TEST_CO2, TEST_LIGHT);
   draw_alarm(true, TEST_ALARM_HR, TEST_ALARM_MIN);
   draw_snooze(true, TEST_ALARM_HR, TEST_ALARM_MIN);
-  draw_snooze(false, TEST_ALARM_HR, TEST_ALARM_MIN);
 }
 
 void loop() {
