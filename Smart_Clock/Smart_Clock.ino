@@ -48,6 +48,7 @@ float temp = 0;
 bool alarm_is_set = false;
 int red = 13;
 int alarm_button = 12;
+int snooze_button = 27;
 
 //std::string rxValue; // Could also make this a global var to access it in loop()
 
@@ -133,6 +134,26 @@ void IRAM_ATTR switch_alarm() {
     draw_alarm(true, alarm_t.hour, alarm_t.minute);
     draw_snooze(false, alarm_t.hour, alarm_t.minute);
   }
+}
+
+void IRAM_ATTR set_snooze() {
+  if (checkAlarm()) {
+    alarm_is_set = true;
+    int mn = alarm_t.minute;   
+    int hr = alarm_t.hour;
+    draw_snooze(true, hr, mn);
+    mn += 9;
+    if (mn >= 60) {
+      hr++;
+      mn -= 60;
+      if (hr >= 24) {
+        hr -= 24;
+      }
+    }
+    alarm_t.hour = hr;
+    alarm_t.minute = mn;
+    turn_off_alarm();
+  } 
 }
 
 class MyCallbacks: public BLECharacteristicCallbacks {
@@ -258,6 +279,7 @@ void setup() {
   pinMode(red, OUTPUT);
   digitalWrite(red, LOW);
   pinMode(alarm_button, INPUT_PULLUP);
+  pinMode(snooze_button, INPUT_PULLUP);
 }
 
 void loop() {
@@ -286,6 +308,7 @@ void loop() {
       setup_time_timer(time_timer);
       draw_alarm(false, 0, 0);
       attachInterrupt(alarm_button, switch_alarm, HIGH);
+      attachInterrupt(snooze_button, set_snooze, HIGH);
       //setup_sensor_timer(sensor_timer);
       is_set_up = true;
     }

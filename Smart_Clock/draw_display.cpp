@@ -154,7 +154,7 @@ void draw_snooze(bool is_snooze, int hr, int mn) {
         hr -= 24;
       }
     }
-    draw_alarm(true, hr, mn + 9);
+    draw_alarm(true, hr, mn);
   } else {
     tft.drawString("            ", xpos, ypos, font);    
   }
