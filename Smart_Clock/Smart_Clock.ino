@@ -137,7 +137,7 @@ void IRAM_ATTR switch_alarm() {
 }
 
 void IRAM_ATTR set_snooze() {
-  if (checkAlarm()) {
+  if (checkAlarm()) {// TODO: change to if alarm is ringing
     alarm_is_set = true;
     int mn = alarm_t.minute;   
     int hr = alarm_t.hour;
