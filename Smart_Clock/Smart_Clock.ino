@@ -6,6 +6,9 @@
 #include <Arduino.h>
 #include "draw_display.h"
 #include "setup_time.h"
+#include "Adafruit_VEML7700.h"
+#include <Adafruit_AHTX0.h>
+#include "Adafruit_CCS811.h"
 
 /*
 Need to insert a few variables and functions into the setup for display
@@ -23,12 +26,28 @@ FUNC:
   draw_snooze(true, TEST_ALARM_HR, TEST_ALARM_MIN);
 */
 
+TFT_eSPI tft = TFT_eSPI();
+hw_timer_t* time_timer = NULL;
+ESP32Time rtc;
 BLECharacteristic *pCharacteristic;
 bool deviceConnected = false;
 float txValue = 0;
 const int readPin = 14;
 bool state = false;
 ESP32Time tim;
+bool is_set_up = false;
+Adafruit_CCS811 ccs;
+Adafruit_AHTX0 aht;
+Adafruit_VEML7700 veml = Adafruit_VEML7700();
+int lux = 0;
+int eCO2 = 0;
+int tvoc = 0;
+sensors_event_t humidityt, tempt;
+float humidity = 0;
+float temp = 0;
+bool alarm_is_set = false;
+int red = 13;
+int alarm_button = 12;
 
 //std::string rxValue; // Could also make this a global var to access it in loop()
 
@@ -51,27 +70,69 @@ typedef struct Alarm {
   int minute;
 } Alarm;
 
-Alarm alarms[10];
+Alarm alarm_t;
 
 void addAlarm(int h, int m) {
-  for(int i = 0; i < 10; i++) {
-    if(alarms[i].hour == -1 && alarms[i].minute == -1) {
-      alarms[i].hour = h;
-      alarms[i].minute = m;
-      break;
-    }
-  }
+  alarm_t.hour = h;
+  alarm_t.minute = m;
+  alarm_is_set = true;
+  draw_alarm(true, h, m);
+  draw_snooze(false, h, m);
 }
 
-bool checkAlarms() {
+bool checkAlarm() {
   int cur_h = tim.getHour(true);
   int cur_m = tim.getMinute();
-  for(int i = 0; i < 10; i++) {
-    if(alarms[i].hour == cur_h && alarms[i].minute == cur_m) {
-      return(true);
-    }
+
+  if(alarm_t.hour == cur_h && alarm_t.minute == cur_m && alarm_is_set) {
+    return true;
   }
-  return(false);
+  return false;
+}
+
+void read_sensor_data() {
+  lux = veml.readLuxNormalized();
+  if (ccs.available()) {
+    ccs.readData();
+    eCO2 = ccs.geteCO2();
+    tvoc = ccs.getTVOC();
+  }
+  aht.getEvent(&humidityt, &tempt);
+  humidity = humidityt.relative_humidity;
+  temp = tempt.temperature;
+}
+
+void read_draw_data() {
+  read_sensor_data();
+  draw_data(temp, humidity, tvoc, eCO2, lux);
+}
+/*
+void setup_sensor_timer(hw_timer_t* timer) {
+  timer = timerBegin(1, 80, true);
+  timerAttachInterrupt(timer, &read_sensor_data, true);
+  timerAlarmWrite(timer,1000000, true); // microseconds
+  timerAlarmEnable(timer);
+}
+*/
+void ring_alarm() {
+  digitalWrite(red, HIGH);
+}
+
+void turn_off_alarm() {
+  digitalWrite(red, LOW);
+}
+
+void IRAM_ATTR switch_alarm() {
+  if (alarm_is_set) {
+    alarm_is_set = false;
+    draw_alarm(false, alarm_t.hour, alarm_t.minute);
+    draw_snooze(false, alarm_t.hour, alarm_t.minute);
+    turn_off_alarm();
+  } else {
+    alarm_is_set = true;
+    draw_alarm(true, alarm_t.hour, alarm_t.minute);
+    draw_snooze(false, alarm_t.hour, alarm_t.minute);
+  }
 }
 
 class MyCallbacks: public BLECharacteristicCallbacks {
@@ -130,6 +191,7 @@ class MyCallbacks: public BLECharacteristicCallbacks {
             }
             addAlarm(hour.toInt(),minute.toInt());
             break;
+            /*
           case '1':
               frequency = 10000;
               timerAlarmWrite(timer, frequency, true);
@@ -142,6 +204,7 @@ class MyCallbacks: public BLECharacteristicCallbacks {
               frequency = 8000;
               timerAlarmWrite(timer, frequency, true);
             break;
+            */
         }
     }
     if(rxValue[0] == 'H') {
@@ -157,12 +220,30 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 };
 BLEServer *pServer;
 void setup() {
-  for( int i = 0; i < 10; i ++) {
-    alarms[i].hour = -1;
-    alarms[i].minute = -1;
-  }
-  
   Serial.begin(115200);
+  setup_display();
+
+  /* Checking for connection */
+  if (!veml.begin()) {
+    Serial.println("Adafruit VEML7700 not found");
+    delay(1000);
+    while (1);
+  }
+  if (! aht.begin()) {
+    Serial.println("Adafruit AHT10/AHT20 not found");
+    while (1) delay(10);
+  }
+  if(!ccs.begin()){
+    Serial.println("CCS811 not found");
+    while(1);
+  } 
+  while(!ccs.available());
+  veml.setGain(VEML7700_GAIN_1);
+  veml.setIntegrationTime(VEML7700_IT_800MS);
+  veml.setLowThreshold(10000);
+  veml.setHighThreshold(20000);
+  veml.interruptEnable(true);
+
   BLEDevice::init("Smart Clock"); // Give it a name
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
@@ -174,6 +255,9 @@ void setup() {
   pService->start();
   pServer->getAdvertising()->start();
   Serial.println("Waiting a client connection to notify...");
+  pinMode(red, OUTPUT);
+  digitalWrite(red, LOW);
+  pinMode(alarm_button, INPUT_PULLUP);
 }
 
 void loop() {
@@ -189,29 +273,50 @@ void loop() {
     //Serial.print("* Sent Value: ");
     //Serial.println(txString);
     //Serial.println(" *");
-    Serial.print("time: ");
-    Serial.print(tim.getTime());
-    Serial.print("\nSet Alarms:\n");
-    for(int i = 0; i < 10; i++) {
-        if(alarms[i].hour != -1) {
-        Serial.print(alarms[i].hour);
-        Serial.print(" ");
-        Serial.print(alarms[i].minute);
-        Serial.print("\n");
-      }
+    //Serial.print("time: ");
+    //Serial.println(tim.getTime());
+    //Serial.print("Set Alarm:\n");
+    //Serial.print(alarm_t.hour);
+    //Serial.print(" ");
+    //Serial.print(alarm_t.minute);
+    //Serial.print("\n");
+    
+    if (!is_set_up) {
+      setup_cur_time(tim.getSecond(), tim.getMinute(), tim.getHour());
+      setup_time_timer(time_timer);
+      draw_alarm(false, 0, 0);
+      attachInterrupt(alarm_button, switch_alarm, HIGH);
+      //setup_sensor_timer(sensor_timer);
+      is_set_up = true;
     }
+    if (checkAlarm()) {
+      ring_alarm();
+    }
+    read_draw_data();
+    // Sensors
+    //read_sensor_data();
+    /*
+    Serial.print("Light: "); Serial.print(lux); Serial.println(" lx");
+    Serial.print("CO2: "); Serial.print(eCO2); Serial.println(" ppm");
+    Serial.print("TVOC: "); Serial.print(tvoc); Serial.println(" ppb");
+    Serial.print("Temperature: "); Serial.print(temp); Serial.println(" C");
+    Serial.print("Humidity: "); Serial.print(humidity); Serial.println(" %rH");
+    */
+    //draw_data(temp, humidity, tvoc, eCO2, lux);
   }
   else {
     Serial.println("Client disconnected, waiting a client connection to notify...");
     pServer->getAdvertising()->start();
     //while(!deviceConnected);
   }
-  if(checkAlarms()) {
+  /*
+  if(checkAlarm()) {
     timerAlarmEnable(timer);
     Serial.println("its time");
   }
   else {
     timerAlarmDisable(timer);
   }
+  */
   delay(1000);
 }

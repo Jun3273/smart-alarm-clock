@@ -48,7 +48,7 @@ void draw_time(int hr, int mn, int sc) {
   tft.drawNumber(sc, xpos, ypos, font);  
 }
 
-void draw_data(int temp, int hum, int co, int co2, int light) {
+void draw_data(float temp, float hum, int co, int co2, int light) {
   int xpos = 0;
   int ytemp = 10;
   int yhum = 60;
@@ -63,31 +63,36 @@ void draw_data(int temp, int hum, int co, int co2, int light) {
   tft.setTextColor(0x7E0, TFT_BLACK);
   xpos += tft.drawString("Temperature", xpos, ytemp, font);
   xpos += tft.drawChar(':', xpos, ytemp, font) + space;
-  xpos += tft.drawNumber(temp, xpos, ytemp, font);
+  xpos += tft.drawFloat(temp, 2, xpos, ytemp, font);
+  xpos += tft.drawString(" C", xpos, ytemp, font);
 
   xpos = margin;
   tft.setTextColor(0xFBE0, TFT_BLACK);
   xpos += tft.drawString("Humidity", xpos, yhum, font);
   xpos += tft.drawChar(':', xpos, yhum, font) + space;
-  xpos += tft.drawNumber(hum, xpos, yhum, font);
+  xpos += tft.drawFloat(hum, 2, xpos, yhum, font);
+  xpos += tft.drawString(" %rH", xpos, yhum, font);
 
   xpos = margin;
   tft.setTextColor(0xF800, TFT_BLACK);
-  xpos += tft.drawString("CO", xpos, yco, font);
+  xpos += tft.drawString("TVOC", xpos, yco, font);
   xpos += tft.drawChar(':', xpos, yco, font) + space;
   xpos += tft.drawNumber(co, xpos, yco, font);
+  xpos += tft.drawString(" ppb  ", xpos, yco, font);
 
   xpos = margin;
   tft.setTextColor(0x7FF, TFT_BLACK);
   xpos += tft.drawString("CO2", xpos, yco2, font);
   xpos += tft.drawChar(':', xpos, yco2, font) + space;
   xpos += tft.drawNumber(co2, xpos, yco2, font);
+  xpos += tft.drawString(" ppm   ", xpos, yco2, font);
 
   xpos = margin;
   tft.setTextColor(0x1F, TFT_BLACK);
   xpos += tft.drawString("Light", xpos, ylight, font);
   xpos += tft.drawChar(':', xpos, ylight, font) + space;
   xpos += tft.drawNumber(light, xpos, ylight, font);  
+  xpos += tft.drawString(" lx    ", xpos, ylight, font);
 
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
 }
