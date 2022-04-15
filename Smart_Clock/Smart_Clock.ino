@@ -9,6 +9,12 @@
 #include "Adafruit_VEML7700.h"
 #include <Adafruit_AHTX0.h>
 #include "Adafruit_CCS811.h"
+#include "Alarm1.h"
+#include "XT_DAC_Audio.h"
+
+XT_Wav_Class Sound(sample);                                           
+XT_DAC_Audio_Class DacAudio(25,0);    
+
 
 /*
 Need to insert a few variables and functions into the setup for display
